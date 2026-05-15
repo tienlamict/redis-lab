@@ -1,0 +1,43 @@
+architecture: replication
+auth:
+  enabled: false
+global:
+  security:
+    allowInsecureImages: true
+commonConfiguration: |-
+  # Modules disabled: image 7.2.5 does not ship redisearch/rejson.
+  appendonly yes
+  save ""
+image:
+  registry: docker.io
+  repository: bitnamilegacy/redis
+  tag: 7.2.5-debian-12-r6
+replica:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+sentinel:
+  enabled: true
+  quorum: 2
+  downAfterMilliseconds: 5000
+  failoverTimeout: 10000
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/redis-sentinel
+    tag: 7.2.5-debian-12-r5
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+volumePermissions:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/os-shell
+    tag: 12-debian-12-r51
+sysctl:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/os-shell
+    tag: 12-debian-12-r51

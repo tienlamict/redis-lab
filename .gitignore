@@ -1,0 +1,8 @@
+bin/
+backend/ui/dist/
+ui/dist/
+ui/node_modules/
+*.log
+.env
+.idea/
+.vscode/

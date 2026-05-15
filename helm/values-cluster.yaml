@@ -1,0 +1,22 @@
+usePassword: false
+global:
+  security:
+    allowInsecureImages: true
+image:
+  registry: docker.io
+  repository: bitnamilegacy/redis-cluster
+  tag: 7.2.5-debian-12-r5
+cluster:
+  nodes: 6
+  replicas: 1
+  init: true
+redis:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+volumePermissions:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/os-shell
+    tag: 12-debian-12-r51
