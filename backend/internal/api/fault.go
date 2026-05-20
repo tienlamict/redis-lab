@@ -46,7 +46,7 @@ func (d *Deps) handleKill(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "pod " + body.Target + " deleted"})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Pod " + body.Target + " deleted"})
 }
 
 func (d *Deps) handleReset(c *gin.Context) {
@@ -86,5 +86,5 @@ func (d *Deps) handleReset(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "install: " + err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "lab " + lab + " reset"})
+	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Lab " + lab + " reset"})
 }
