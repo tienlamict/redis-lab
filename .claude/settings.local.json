@@ -22,7 +22,9 @@
       "Bash(helm search *)",
       "Bash(bash ./scripts/deploy-lab.sh sentinel)",
       "Bash(bash ./scripts/deploy-lab.sh cluster)",
-      "Bash(kubectl exec *)"
+      "Bash(kubectl exec *)",
+      "Bash(go version *)",
+      "Bash(go env *)"
     ]
   }
 }
