@@ -1,5 +1,13 @@
 // TopologyView: per-lab SVG rendering of nodes + replication/monitor arrows.
-// Pure SVG (no react-flow) for predictable styling and no extra deps.
+// Pure SVG (no react-flow). Click a node → onNodeClick(podName).
+// Visual rules per spec:
+//   green   = master healthy
+//   blue    = replica healthy
+//   violet  = sentinel
+//   amber   = sdown / pending
+//   red     = odown / deleted / disconnected / error
+// Arrow style: solid "repl" for replication, dashed "monitor" for sentinel→redis.
+import { useEffect, useRef, useState } from "react";
 import type {
   ClusterTopology,
   Lab,
@@ -23,6 +31,7 @@ const COLOR = {
   errorStroke: "#f87171",
   arrow: "#94a3b8",
   text: "#e2e8f0",
+  selected: "#fbbf24",
 };
 
 function nodeColors(status: string, role?: string) {
@@ -35,8 +44,9 @@ function nodeColors(status: string, role?: string) {
   return { fill: COLOR.replicaFill, stroke: COLOR.replicaStroke };
 }
 
-const NODE_W = 160;
-const NODE_H = 56;
+// Spec calls for 140 × 60.
+const NODE_W = 140;
+const NODE_H = 60;
 
 function SvgNode(props: {
   x: number;
@@ -45,25 +55,31 @@ function SvgNode(props: {
   subtitle?: string;
   role?: string;
   status: string;
-  highlight?: boolean;
+  selected?: boolean;
+  flash?: boolean;
+  onClick?: () => void;
 }) {
   const c = nodeColors(props.status, props.role);
   return (
-    <g transform={`translate(${props.x}, ${props.y})`} className="fade-in">
+    <g
+      transform={`translate(${props.x}, ${props.y})`}
+      className={`fade-in ${props.flash ? "flash-bg" : ""} cursor-pointer`}
+      onClick={props.onClick}
+    >
       <rect
         rx={10}
         ry={10}
         width={NODE_W}
         height={NODE_H}
         fill={c.fill}
-        stroke={c.stroke}
-        strokeWidth={props.highlight ? 3 : 1.5}
+        stroke={props.selected ? COLOR.selected : c.stroke}
+        strokeWidth={props.selected ? 3 : 1.5}
       />
       <text
         x={NODE_W / 2}
-        y={22}
+        y={24}
         textAnchor="middle"
-        fontSize={12}
+        fontSize={11}
         fontFamily="ui-monospace, monospace"
         fontWeight={600}
         fill={COLOR.text}
@@ -73,7 +89,7 @@ function SvgNode(props: {
       {props.subtitle && (
         <text
           x={NODE_W / 2}
-          y={40}
+          y={42}
           textAnchor="middle"
           fontSize={10}
           fontFamily="ui-monospace, monospace"
@@ -135,9 +151,46 @@ function ArrowDefs() {
   );
 }
 
+// useFlash tracks which pods changed role recently and returns a Set the
+// renderer queries to apply the flash-bg animation. The Set is rebuilt every
+// time `signature` changes; entries expire after 800ms.
+function useFlash(signature: string) {
+  const prevRef = useRef<string | null>(null);
+  const [flashing, setFlashing] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (prevRef.current === null) {
+      prevRef.current = signature;
+      return;
+    }
+    if (prevRef.current === signature) return;
+    // Detect changed pod->role pairs.
+    const prev = new Map(prevRef.current.split(",").map((s) => s.split("=") as [string, string]));
+    const curr = new Map(signature.split(",").map((s) => s.split("=") as [string, string]));
+    const changed = new Set<string>();
+    curr.forEach((role, pod) => {
+      if (prev.get(pod) && prev.get(pod) !== role) changed.add(pod);
+    });
+    prevRef.current = signature;
+    if (changed.size > 0) {
+      setFlashing(changed);
+      const t = setTimeout(() => setFlashing(new Set()), 800);
+      return () => clearTimeout(t);
+    }
+  }, [signature]);
+  return flashing;
+}
+
 // ---------- per-lab layouts ----------
 
-function StandaloneLayout({ d }: { d: StandaloneTopology }) {
+function StandaloneLayout({
+  d,
+  onNodeClick,
+  selected,
+}: {
+  d: StandaloneTopology;
+  onNodeClick?: (pod: string) => void;
+  selected?: string | null;
+}) {
   const W = 720;
   const H = 280;
   const masterX = W / 2 - NODE_W / 2;
@@ -145,6 +198,13 @@ function StandaloneLayout({ d }: { d: StandaloneTopology }) {
   const replicaY = 180;
   const reps = d.replicas ?? [];
   const gap = reps.length > 1 ? (W - NODE_W * reps.length) / (reps.length + 1) : (W - NODE_W) / 2;
+
+  const sig =
+    `${d.master?.pod}=${d.master?.role}` +
+    "," +
+    reps.map((r) => `${r.pod}=${r.role}`).join(",");
+  const flashing = useFlash(sig);
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-h-[360px]">
       <ArrowDefs />
@@ -155,6 +215,9 @@ function StandaloneLayout({ d }: { d: StandaloneTopology }) {
         subtitle={`master · ${d.master?.status || "?"}`}
         role="master"
         status={d.master?.status || "unknown"}
+        selected={selected === d.master?.pod}
+        flash={flashing.has(d.master?.pod ?? "")}
+        onClick={() => d.master?.pod && onNodeClick?.(d.master.pod)}
       />
       {reps.map((r, i) => {
         const x = gap * (i + 1) + NODE_W * i;
@@ -167,6 +230,9 @@ function StandaloneLayout({ d }: { d: StandaloneTopology }) {
               subtitle={`replica · ${r.status}`}
               role="slave"
               status={r.status}
+              selected={selected === r.pod}
+              flash={flashing.has(r.pod)}
+              onClick={() => onNodeClick?.(r.pod)}
             />
             <Arrow
               x1={masterX + NODE_W / 2}
@@ -182,7 +248,15 @@ function StandaloneLayout({ d }: { d: StandaloneTopology }) {
   );
 }
 
-function SentinelLayout({ d }: { d: SentinelTopology }) {
+function SentinelLayout({
+  d,
+  onNodeClick,
+  selected,
+}: {
+  d: SentinelTopology;
+  onNodeClick?: (pod: string) => void;
+  selected?: string | null;
+}) {
   const W = 760;
   const H = 320;
   const podByName = new Map<string, NodeView>();
@@ -195,6 +269,9 @@ function SentinelLayout({ d }: { d: SentinelTopology }) {
   const redisY = 16;
   const sentinelY = 180;
   const gapR = redisPods.length > 1 ? (W - NODE_W * redisPods.length) / (redisPods.length + 1) : (W - NODE_W) / 2;
+
+  const sig = redisPods.map((n) => `${n}=${d.currentMaster === n ? "master" : "slave"}`).join(",");
+  const flashing = useFlash(sig);
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-h-[400px]">
@@ -212,22 +289,10 @@ function SentinelLayout({ d }: { d: SentinelTopology }) {
               subtitle={`${isMaster ? "master" : "replica"} · ${meta?.status || "?"}`}
               role={isMaster ? "master" : "slave"}
               status={meta?.status || "unknown"}
-              highlight={isMaster}
+              selected={selected === name}
+              flash={flashing.has(name)}
+              onClick={() => onNodeClick?.(name)}
             />
-            {!isMaster && d.master?.pod && (
-              <Arrow
-                x1={x + NODE_W / 2}
-                y1={redisY + NODE_H}
-                x2={
-                  gapR * (redisPods.indexOf(d.master.pod) + 1) +
-                  NODE_W * redisPods.indexOf(d.master.pod) +
-                  NODE_W / 2
-                }
-                y2={redisY + NODE_H + 2}
-                label="repl"
-              />
-            )}
-            {/* monitor arrow if there's a sentinel co-located */}
             {sentinelPods.has(name) && (
               <Arrow
                 x1={x + NODE_W / 2}
@@ -253,6 +318,8 @@ function SentinelLayout({ d }: { d: SentinelTopology }) {
             subtitle={`sentinel · ${s.status}`}
             role="sentinel"
             status={s.status}
+            selected={selected === s.pod}
+            onClick={() => onNodeClick?.(s.pod)}
           />
         );
       })}
@@ -260,13 +327,28 @@ function SentinelLayout({ d }: { d: SentinelTopology }) {
   );
 }
 
-function ClusterLayout({ d }: { d: ClusterTopology }) {
+function ClusterLayout({
+  d,
+  onNodeClick,
+  selected,
+}: {
+  d: ClusterTopology;
+  onNodeClick?: (pod: string) => void;
+  selected?: string | null;
+}) {
   const shards: ShardView[] = d.shards || [];
   const W = 820;
   const H = 320;
   const masterY = 16;
   const replicaY = 180;
   const gap = shards.length > 0 ? (W - NODE_W * shards.length) / (shards.length + 1) : 0;
+  const sig = shards
+    .flatMap((sh) => [
+      `${sh.masterPod}=master`,
+      ...sh.replicas.map((r) => `${r.pod}=replica`),
+    ])
+    .join(",");
+  const flashing = useFlash(sig);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-h-[400px]">
       <ArrowDefs />
@@ -284,25 +366,29 @@ function ClusterLayout({ d }: { d: ClusterTopology }) {
               subtitle={`slots ${slotLabel}`}
               role="master"
               status={masterStatus}
-              highlight
+              selected={selected === sh.masterPod}
+              flash={flashing.has(sh.masterPod)}
+              onClick={() => sh.masterPod && onNodeClick?.(sh.masterPod)}
             />
-            {sh.replicas.map((r, j) => {
-              const rx = x + (j - (sh.replicas.length - 1) / 2) * 8; // small offset for multiple replicas
+            {sh.replicas.map((r) => {
               const ready = (d.pods || []).find((p) => p.name === r.pod)?.ready;
               return (
                 <g key={r.id}>
                   <SvgNode
-                    x={rx}
+                    x={x}
                     y={replicaY}
                     title={r.pod || "(?)"}
                     subtitle="replica"
                     role="slave"
                     status={ready ? "ok" : "pending"}
+                    selected={selected === r.pod}
+                    flash={flashing.has(r.pod)}
+                    onClick={() => r.pod && onNodeClick?.(r.pod)}
                   />
                   <Arrow
                     x1={x + NODE_W / 2}
                     y1={masterY + NODE_H}
-                    x2={rx + NODE_W / 2}
+                    x2={x + NODE_W / 2}
                     y2={replicaY}
                     label="repl"
                   />
@@ -319,6 +405,8 @@ function ClusterLayout({ d }: { d: ClusterTopology }) {
 export function TopologyView(props: {
   lab: Lab;
   data: StandaloneTopology | SentinelTopology | ClusterTopology | null;
+  onNodeClick?: (pod: string) => void;
+  selected?: string | null;
 }) {
   if (!props.data) {
     return (
@@ -327,7 +415,27 @@ export function TopologyView(props: {
       </div>
     );
   }
-  if (props.lab === "standalone") return <StandaloneLayout d={props.data as StandaloneTopology} />;
-  if (props.lab === "sentinel") return <SentinelLayout d={props.data as SentinelTopology} />;
-  return <ClusterLayout d={props.data as ClusterTopology} />;
+  if (props.lab === "standalone")
+    return (
+      <StandaloneLayout
+        d={props.data as StandaloneTopology}
+        onNodeClick={props.onNodeClick}
+        selected={props.selected}
+      />
+    );
+  if (props.lab === "sentinel")
+    return (
+      <SentinelLayout
+        d={props.data as SentinelTopology}
+        onNodeClick={props.onNodeClick}
+        selected={props.selected}
+      />
+    );
+  return (
+    <ClusterLayout
+      d={props.data as ClusterTopology}
+      onNodeClick={props.onNodeClick}
+      selected={props.selected}
+    />
+  );
 }

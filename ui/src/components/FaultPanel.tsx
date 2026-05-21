@@ -7,7 +7,16 @@ import type { Lab, PodSummary } from "../types";
 export function FaultPanel(props: {
   lab: Lab;
   pods: PodSummary[];
-  masterPod?: string;
+  // masterPods: explicit set of pods to render with the "master" (red) accent.
+  // Cluster mode has 3 masters; standalone & sentinel have 1. The pages
+  // compute this from their topology snapshot.
+  masterPods?: string[];
+  // failoverActive: while true, an "elapsed" timer ticks and shows how long
+  // we've been waiting for the failover event. The page clears this when it
+  // observes role_changed / +switch-master / pod_added (new master ready).
+  failoverActive?: boolean;
+  failoverStartedAt?: number;
+  failoverDoneLabel?: string;
 }) {
   const [last, setLast] = useState<{ pod: string; at: number } | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -31,9 +40,9 @@ export function FaultPanel(props: {
     }
   };
 
-  // Heuristic master detection when caller doesn't pass an explicit pod.
+  const masterSet = new Set(props.masterPods ?? []);
   const isMaster = (p: PodSummary) =>
-    props.masterPod === p.name || (props.lab === "standalone" && p.name.includes("master"));
+    masterSet.has(p.name) || (props.lab === "standalone" && p.name.includes("master") && masterSet.size === 0);
 
   return (
     <div className="flex h-full flex-col rounded-lg border border-slate-800 bg-slate-950/50 p-3">
@@ -63,10 +72,24 @@ export function FaultPanel(props: {
           );
         })}
       </div>
-      {last && (
-        <div className="mt-3 border-t border-slate-800 pt-2 text-xs text-slate-400">
-          Last kill: <span className="text-slate-200">{last.pod}</span> ·{" "}
-          {Math.floor((now - last.at) / 1000)}s ago
+      {(last || props.failoverActive) && (
+        <div className="mt-3 border-t border-slate-800 pt-2 text-xs">
+          {last && (
+            <div className="text-slate-400">
+              Last kill: <span className="text-slate-200">{last.pod}</span> ·{" "}
+              {Math.floor((now - last.at) / 1000)}s ago
+            </div>
+          )}
+          {props.failoverActive && props.failoverStartedAt && (
+            <div className="text-amber-300">
+              Failover: elapsed {Math.floor((now - props.failoverStartedAt) / 1000)}s
+            </div>
+          )}
+          {!props.failoverActive && props.failoverDoneLabel && (
+            <div className="text-emerald-300">
+              Failover: {props.failoverDoneLabel}
+            </div>
+          )}
         </div>
       )}
     </div>

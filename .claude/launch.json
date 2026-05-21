@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "ui"],
+      "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "bin/redis-lab.exe",
+      "runtimeArgs": [],
+      "port": 8080
+    }
+  ]
+}

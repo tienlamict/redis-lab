@@ -1,4 +1,4 @@
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { api } from "../api";
 import type { Lab } from "../types";
@@ -11,7 +11,6 @@ const tabs: { to: string; label: string; lab: Lab }[] = [
 
 export function Navbar() {
   const loc = useLocation();
-  const nav = useNavigate();
   const [resetting, setResetting] = useState(false);
   const currentLab = (loc.pathname.split("/")[1] as Lab) || "standalone";
 
@@ -20,12 +19,12 @@ export function Navbar() {
     setResetting(true);
     try {
       await api.resetLab(currentLab);
+      // Spec: spinner 1-2 min then reload page. Backend blocks until helm
+      // install --wait returns, so by the time we get here the lab is ready.
+      window.location.reload();
     } catch (e) {
       alert("reset failed: " + e);
-    } finally {
       setResetting(false);
-      // Force topology refresh by navigating to same route.
-      nav(loc.pathname);
     }
   };
 
@@ -56,7 +55,17 @@ export function Navbar() {
         disabled={resetting}
         className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
       >
-        {resetting ? "Resetting…" : `Reset ${currentLab}`}
+        {resetting ? (
+          <span className="flex items-center gap-2">
+            <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" />
+              <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+            Resetting…
+          </span>
+        ) : (
+          `Reset ${currentLab}`
+        )}
       </button>
     </header>
   );
