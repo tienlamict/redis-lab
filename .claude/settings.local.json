@@ -24,7 +24,10 @@
       "Bash(bash ./scripts/deploy-lab.sh cluster)",
       "Bash(kubectl exec *)",
       "Bash(go version *)",
-      "Bash(go env *)"
+      "Bash(go env *)",
+      "Bash(where make *)",
+      "Bash(make --version)",
+      "Bash(EXE=.exe make backend-build)"
     ]
   }
 }
