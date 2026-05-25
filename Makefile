@@ -1,6 +1,6 @@
 .PHONY: help cluster-up cluster-down deploy-standalone deploy-sentinel deploy-cluster deploy-all
 .PHONY: reset-standalone reset-sentinel reset-cluster validate-phase1
-.PHONY: ui-install ui-build backend-build dev port-forward teardown clean
+.PHONY: ui-install ui-build backend-build dev port-forward port-forward-fg teardown clean
 
 help:
 	@echo "Targets:"
@@ -65,13 +65,17 @@ backend-build: ui-build
 
 # `make dev` is the one-shot bring-up. After it returns, the binary is in
 # foreground; ports stay open while it runs. Ctrl-C to stop.
-dev: cluster-up deploy-all backend-build
-	@echo "Starting port-forwards in background..."
-	bash ./scripts/port-forward.sh &
-	@echo "Starting backend on :8080 ..."
+dev: cluster-up deploy-all backend-build port-forward
 	./bin/redis-lab$(EXE)
 
+# port-forward target backgrounds the script so the chain `make port-forward &&
+# ./bin/redis-lab` doesn't hang. For an interactive foreground session, run
+# `bash scripts/port-forward.sh` directly.
 port-forward:
+	bash ./scripts/port-forward.sh &
+
+# port-forward-fg keeps the script in foreground; ctrl-c stops all forwards.
+port-forward-fg:
 	bash ./scripts/port-forward.sh
 
 teardown:

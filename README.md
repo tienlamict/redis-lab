@@ -115,9 +115,12 @@ Step by step if `make dev` is too magical:
 make cluster-up       # create the Kind cluster
 make deploy-all       # helm install standalone + sentinel + cluster
 make backend-build    # npm install + vite build + go build → bin/redis-lab
-make port-forward &   # forwards 6379/26379/6381 to host
+make port-forward     # forwards 6379/26379/6381 to host (backgrounded)
 ./bin/redis-lab       # starts HTTP server on :8080 (UI embedded)
 ```
+
+> **Windows users**: pass `EXE=.exe` to make targets that build the binary
+> (e.g. `make backend-build EXE=.exe`) so the output is `bin/redis-lab.exe`.
 
 Teardown:
 
